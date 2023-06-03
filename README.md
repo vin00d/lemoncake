@@ -1,2 +1,2 @@
 # lemoncake
-Multimodal deep learning for healthcare on MIMIC-IV
+Multimodal deep learning for healthcare on the MIMIC-IV dataset.
