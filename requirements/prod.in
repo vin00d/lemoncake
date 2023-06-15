@@ -1,0 +1,18 @@
+# h5py
+# importlib-metadata>=4.4
+# numpy
+# pyngrok
+# requests
+# smart_open[s3]
+# tqdm
+pandas
+# # versioned for stability
+# gantry==0.4.9
+# gradio==3.0.21
+# versioned to match Google Colab up to minor
+# Jinja2>=3.1,<3.2
+# pillow>=8.4,<8.5
+torch>=2.0,<2.1
+# torchvision>=0.15,<0.16
+# # versioned to avoid breaking change in minor version update
+# markupsafe<2.1
