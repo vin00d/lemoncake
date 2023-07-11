@@ -17,7 +17,10 @@ class MIMICPretrainedDataset(torch.utils.data.Dataset):
     def __init__(self, split: str, data_path: str = DATA_PATH):
         self.x = pd.read_csv(Path(data_path) / f"x_{split}.csv")
         self.y = pd.read_csv(Path(data_path) / f"y_{split}.csv")
+        self.y = self.y.fillna(0).replace(-1, 0)                    # replace NaN and -1 with 0
+        
         assert len(self.x) == len(self.y)
+        self.label_counts = self.y.sum(axis=0).to_dict()
 
     def __len__(self):
         return len(self.x)
