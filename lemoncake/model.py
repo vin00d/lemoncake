@@ -80,7 +80,7 @@ class MultiLabelPredictor(nn.Module):
 
     def forward(self, x):
         # print(f"x.shape from MultiLabelPredictor: {x.shape}")
-        return self.linear(x[:, 0])  # x[:, 0]: (B, hidden) -> (B, 14)
+        return self.linear(x[:, 0])  # x[:, 0]: (B, hidden) -> (B, 13)
 
 
 class MultimodalBERT(pl.LightningModule):
@@ -91,6 +91,8 @@ class MultimodalBERT(pl.LightningModule):
 
     def __init__(
         self,
+        train_pos_wts,
+        valid_pos_wts,
         vector_width=4041,
         seq_len=256,
         hidden=768,
@@ -103,6 +105,13 @@ class MultimodalBERT(pl.LightningModule):
         """
 
         super().__init__()
+        self.save_hyperparameters()
+
+        ## loss_fns
+        self.train_loss_fn = nn.BCEWithLogitsLoss(pos_weight=train_pos_wts)
+        self.valid_loss_fn = nn.BCEWithLogitsLoss(pos_weight=valid_pos_wts)
+
+        ## model
         self.preprocessor = VectorPreProcessor(
             vector_width=vector_width, hidden=hidden, seq_len=seq_len
         )
@@ -110,6 +119,20 @@ class MultimodalBERT(pl.LightningModule):
             hidden=hidden, n_layers=n_layers, attn_heads=attn_heads, dropout=dropout
         )
         self.predictor = MultiLabelPredictor(hidden=hidden)
+
+        ## metrics
+        # metrics = MetricCollection(
+        #     [
+        #         Accuracy(num_classes=13),
+        #         AUROC(num_classes=13),
+        #         Precision(num_classes=13),
+        #         Recall(num_classes=13),
+        #         AveragePrecision(num_classes=13),
+        #     ]
+        # )
+        # self.train_metrics = metrics.clone(prefix="train/")
+        # self.valid_metrics = metrics.clone(prefix="valid/")
+        # self.test_metrics = metrics.clone(prefix="test/")
 
     def forward(self, x):  # x: (B, 4041)
         x = self.preprocessor(x)  # x: (B, 256, 768)
@@ -120,23 +143,24 @@ class MultimodalBERT(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch["x"], batch["y"]
         y_hat = self(x)
-        loss = F.binary_cross_entropy_with_logits(y_hat, y)
+        loss = self.train_loss_fn(y_hat, y)
+
         self.log("train_loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = batch["x"], batch["y"]
         y_hat = self(x)
-        loss = F.binary_cross_entropy_with_logits(y_hat, y)
-        self.log("val_loss", loss, prog_bar=True)
+        loss = self.valid_loss_fn(y_hat, y)
+
+        self.log("valid_loss", loss, prog_bar=True)
         return loss
 
     def test_step(self, batch, batch_idx):
         x, y = batch["x"], batch["y"]
         y_hat = self(x)
-        loss = F.binary_cross_entropy_with_logits(y_hat, y)
-        self.log("test_loss", loss, prog_bar=True)
-        return loss
+        # self.log("test_loss", loss, prog_bar=True)
+        return 
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=0.001)
