@@ -22,6 +22,7 @@ tornado>=6.3,<6.4
 # versioned due to Jinja2 compatibility issue
 nbconvert
 # versioned to improve stability
-pytorch-lightning==2.0.3
-torchmetrics==0.11.4
+pytorch-lightning==2.0.6
+torchmetrics==1.0.1
+tensorboard                 # delete later?
 wandb==0.15.0
