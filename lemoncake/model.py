@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,21 +13,30 @@ from torchmetrics import (
     AveragePrecision,
 )
 
-# A function to initialize the weights of the model
-def init_multimodalbert(m, initrange, zero_bn=False):
-    """Initialize Multimodal BERT."""
-    if isinstance(m, (nn.Embedding, nn.EmbeddingBag)):
-        m.weight.data.uniform_(-initrange, initrange)
-    if isinstance(m, (nn.TransformerEncoderLayer, nn.Linear)):
-        for name, param in m.named_parameters():
-            if "bias" in name:
-                nn.init.constant_(param, 0.0)
-            elif "weight" in name:
-                nn.init.kaiming_normal_(param)
-    if isinstance(m, (nn.BatchNorm1d)):
-        nn.init.constant_(m.weight, 0.0 if zero_bn else 1.0)
-    for l in m.children():
-        init_multimodalbert(l, initrange, zero_bn)
+class PositionalEncoding1(nn.Module):
+    """
+    Sinusoidal Positional Encoding
+    """
+    def __init__(self, d_model, dropout: float = 0.1, max_len=512):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        # Compute the positional encodings once in log space.
+        pe = torch.zeros(max_len, d_model).float()                              # pe: (max_len, d_model)
+        pe.require_grad = False
+
+        position = torch.arange(0, max_len).float().unsqueeze(1)                                  # (max_len, 1)  eg. (512, 1)
+        div_term = (torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)).exp()   # (d_model//2,) eg. (384,)
+        a = position * div_term                                                                   # (max_len, d_model//2)  eg. (512, 384)
+        pe[:, 0::2] = torch.sin(a)                            # seq = L[start:stop:step]    0::2 start 0, step_size = 2  
+        pe[:, 1::2] = torch.cos(a)                            
+
+        pe = pe.unsqueeze(0)                                                    # pe: (1, max_len, d_model)
+        self.register_buffer('pe', pe)                                          # Buffers won’t be returned in model.parameters(), so that the optimizer won’t have a change to update them.
+                                                                                # register_buffer(name, tensor)
+    def forward(self, x):                         # x: (B, seq_len)
+        x = x + self.pe[:, :x.size(1)]             # (1, seq_len, d_model)
+        return self.dropout(x)                     # (1, seq_len, d_model)
 
 
 # Create a BERT model class in PyTorch with default values of 12 encoder layers, 12 attention heads, and hidden size 786
@@ -37,6 +47,8 @@ class BERT(nn.Module):
         self.n_layers = n_layers
         self.attn_heads = attn_heads
         self.dropout = dropout
+
+        self.pos_encoder = PositionalEncoding1(d_model=hidden, dropout=dropout)
 
         # BERT consists of a stack of 12 identical encoder layers
         encoder_layer = nn.TransformerEncoderLayer(
@@ -53,6 +65,7 @@ class BERT(nn.Module):
         # x: [batch_size, seq_len, hidden]
 
         # print(f"x.shape from BERT: {x.shape}")
+        x = self.pos_encoder(x)    
         x = self.encoder(x)
         return x
 
@@ -99,6 +112,7 @@ class MultiLabelPredictor(nn.Module):
         return self.linear(x[:, 0])  # x[:, 0]: (B, hidden) -> (B, 13)
 
 
+
 class MultimodalBERT(pl.LightningModule):
     """
     Multimodal BERT
@@ -139,31 +153,31 @@ class MultimodalBERT(pl.LightningModule):
         # init weights from Karpathy's nanoGPT (see below)
         self.apply(self._init_weights)
 
-        ## metrics
-        # metrics = MetricCollection(
-        #     [
-        #         Accuracy(num_classes=13),
-        #         AUROC(num_classes=13),
-        #         Precision(num_classes=13),
-        #         Recall(num_classes=13),
-        #         AveragePrecision(num_classes=13),
-        #     ]
-        # )
-        # self.train_metrics = metrics.clone(prefix="train/")
-        # self.valid_metrics = metrics.clone(prefix="valid/")
-        # self.test_metrics = metrics.clone(prefix="test/")
+        # metrics
+        metrics = MetricCollection(
+            [
+                # Accuracy(num_classes=13),
+                AUROC(task='multilabel', num_labels=13),
+                # Precision(num_classes=13),
+                # Recall(num_classes=13),
+                # AveragePrecision(num_classes=13),
+            ]
+        )
+        self.train_metrics = metrics.clone(prefix="train/")
+        self.valid_metrics = metrics.clone(prefix="valid/")
+        self.test_metrics = metrics.clone(prefix="test/")
 
 
     ## init weights from Karpathy's nanoGPT
     ## https://github.com/karpathy/nanoGPT/blob/a82b33b525ca9855d705656387698e13eb8e8d4b/model.py#L147
     def _init_weights(self, module):
-            if isinstance(module, nn.Linear):
-                # torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-                nn.init.xavier_normal_(module.weight)
-                if module.bias is not None:
-                    torch.nn.init.zeros_(module.bias)
-            # elif isinstance(module, nn.Embedding):
-            #     torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        if isinstance(module, nn.Linear):
+            # torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            nn.init.xavier_normal_(module.weight)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        # elif isinstance(module, nn.Embedding):
+        #     torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
 
     def forward(self, x):  # x: (B, 4041)
@@ -177,7 +191,9 @@ class MultimodalBERT(pl.LightningModule):
         y_hat = self(x)
         loss = self.train_loss_fn(y_hat, y)
 
-        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.train_metrics.update(y_hat, y.int())
+        self.log_dict(self.train_metrics.compute(), on_step=False, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -185,7 +201,9 @@ class MultimodalBERT(pl.LightningModule):
         y_hat = self(x)
         loss = self.valid_loss_fn(y_hat, y)
 
-        self.log("valid_loss", loss, prog_bar=True)
+        self.log("valid_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.valid_metrics.update(y_hat, y.int())
+        self.log_dict(self.valid_metrics.compute(), on_step=False, on_epoch=True)
         return loss
 
     def test_step(self, batch, batch_idx):
