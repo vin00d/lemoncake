@@ -154,18 +154,18 @@ class MultimodalBERT(pl.LightningModule):
         self.apply(self._init_weights)
 
         # metrics
-        metrics = MetricCollection(
-            [
-                # Accuracy(num_classes=13),
-                AUROC(task='multilabel', num_labels=13),
-                # Precision(num_classes=13),
-                # Recall(num_classes=13),
-                # AveragePrecision(num_classes=13),
-            ]
-        )
-        self.train_metrics = metrics.clone(prefix="train/")
-        self.valid_metrics = metrics.clone(prefix="valid/")
-        self.test_metrics = metrics.clone(prefix="test/")
+        # metrics = MetricCollection(
+        #     [
+        #         # Accuracy(num_classes=13),
+        #         AUROC(task='multilabel', num_labels=13),
+        #         # Precision(num_classes=13),
+        #         # Recall(num_classes=13),
+        #         # AveragePrecision(num_classes=13),
+        #     ]
+        # )
+        # self.train_metrics = metrics.clone(prefix="train/")
+        # self.valid_metrics = metrics.clone(prefix="valid/")
+        # self.test_metrics = metrics.clone(prefix="test/")
 
 
     ## init weights from Karpathy's nanoGPT
@@ -192,8 +192,8 @@ class MultimodalBERT(pl.LightningModule):
         loss = self.train_loss_fn(y_hat, y)
 
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.train_metrics.update(y_hat, y.int())
-        self.log_dict(self.train_metrics.compute(), on_step=False, on_epoch=True)
+        # self.train_metrics.update(y_hat, y.int())
+        # self.log_dict(self.train_metrics.compute(), on_step=False, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -202,8 +202,8 @@ class MultimodalBERT(pl.LightningModule):
         loss = self.valid_loss_fn(y_hat, y)
 
         self.log("valid_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.valid_metrics.update(y_hat, y.int())
-        self.log_dict(self.valid_metrics.compute(), on_step=False, on_epoch=True)
+        # self.valid_metrics.update(y_hat, y.int())
+        # self.log_dict(self.valid_metrics.compute(), on_step=False, on_epoch=True)
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -213,7 +213,7 @@ class MultimodalBERT(pl.LightningModule):
         return 
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.001)
+        return torch.optim.Adam(self.parameters(), lr=3e-5)
 
     def predict(self, x):
         y_hat = self(x)
