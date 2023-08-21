@@ -172,8 +172,14 @@ class MultimodalBERT(pl.LightningModule):
     ## https://github.com/karpathy/nanoGPT/blob/a82b33b525ca9855d705656387698e13eb8e8d4b/model.py#L147
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
-            # torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            nn.init.xavier_normal_(module.weight)
+            # normal
+            # nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            nn.init.xavier_normal_(module.weight, gain=0.000001)
+            # nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
+            # uniform
+            # nn.init.uniform_(module.bias, a=-0.02, b=0.02)
+            # nn.init.xavier_uniform_(module.weight, gain=0.0002)
+            # nn.init.kaiming_uniform_(module.weight)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         # elif isinstance(module, nn.Embedding):
